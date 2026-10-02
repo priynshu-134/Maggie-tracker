@@ -16,11 +16,11 @@ const supabase = createClient(
 
 const rotation = [
   {
-    person: "Abhay",
+    person: "Aniket",
     task: "Kettle"
   },
   {
-    person: "Aniket",
+    person: "Abhay",
     task: "Bowl"
   },
   {
@@ -28,11 +28,11 @@ const rotation = [
     task: "Kettle"
   },
   {
-    person: "Abhay",
+    person: "Aniket",
     task: "Bowl"
   },
   {
-    person: "Aniket",
+    person: "Abhay",
     task: "Kettle"
   },
   {
@@ -42,8 +42,8 @@ const rotation = [
 ];
 
 const people = [
-  "Abhay",
   "Aniket",
+  "Abhay",
   "Priyanshu"
 ];
 
