@@ -47,311 +47,249 @@ const people = [
   "Priyanshu"
 ];
 
-
 // --------------------------------------------------
 // APP
 // --------------------------------------------------
 
 function App() {
-
   // -----------------------------
   // Rotation state
   // -----------------------------
 
-  const [currentStep, setCurrentStep] =
-    useState(null);
-
-  const [cycle, setCycle] =
-    useState(1);
-
-  const [completedTasks, setCompletedTasks] =
-    useState([]);
-
+  const [currentStep, setCurrentStep] = useState(null);
+  const [cycle, setCycle] = useState(1);
+  const [completedTasks, setCompletedTasks] = useState([]);
 
   // -----------------------------
   // Auth state
   // -----------------------------
 
-  const [session, setSession] =
-    useState(null);
-
-  const [isAdmin, setIsAdmin] =
-    useState(false);
-
+  const [session, setSession] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // -----------------------------
   // Login state
   // -----------------------------
 
-  const [email, setEmail] =
-    useState("");
-
-  const [password, setPassword] =
-    useState("");
-
-  const [loginError, setLoginError] =
-    useState("");
-
-  const [loginLoading, setLoginLoading] =
-    useState(false);
-
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
 
   // -----------------------------
   // General state
   // -----------------------------
 
-  const [loading, setLoading] =
-    useState(true);
-
-  const [updating, setUpdating] =
-    useState(false);
-
-  const [showLogin, setShowLogin] =
-    useState(false);
-
+  const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
 
   // -----------------------------
   // History
   // -----------------------------
 
-  const [history, setHistory] =
-    useState([]);
+  const [history, setHistory] = useState([]);
 
   // --------------------------------------------------
   // FETCH ROTATION
   // --------------------------------------------------
 
   const fetchRotation = async () => {
-
-    const { data, error } =
-      await supabase
-        .from("rotation")
-        .select("*")
-        .eq("id", 1)
-        .single();
+    const { data, error } = await supabase
+      .from("rotation")
+      .select("*")
+      .eq("id", 1)
+      .single();
 
     if (error) {
-
-      console.error(
-        "Rotation fetch error:",
-        error
-      );
-
-      return;
+      console.error("Rotation fetch error:", error);
+      return null;
     }
 
-    setCurrentStep(
-      data.current_step
-    );
+    setCurrentStep(data.current_step);
+    setCycle(data.cycle);
+    setCompletedTasks(data.completed_tasks || []);
 
-    setCycle(
-      data.cycle
-    );
-
-    setCompletedTasks(
-      data.completed_tasks || []
-    );
+    return data;
   };
-
 
   // --------------------------------------------------
   // FETCH HISTORY
   // --------------------------------------------------
 
   const fetchHistory = async () => {
-
-    const { data, error } =
-      await supabase
-        .from("rotation_history")
-        .select("*")
-        .order(
-          "created_at",
-          {
-            ascending: false
-          }
-        )
-        .limit(100);
+    const { data, error } = await supabase
+      .from("rotation_history")
+      .select("*")
+      .order("created_at", {
+        ascending: false
+      })
+      .limit(100);
 
     if (error) {
-
-      console.error(
-        "History fetch error:",
-        error
-      );
-
+      console.error("History fetch error:", error);
       return;
     }
 
-    setHistory(
-      data || []
-    );
+    setHistory(data || []);
   };
-
 
   // --------------------------------------------------
   // CHECK ADMIN
   // --------------------------------------------------
 
-  const checkAdmin = async (
-    currentSession
-  ) => {
-
+  const checkAdmin = async (currentSession) => {
     if (!currentSession) {
-
       setIsAdmin(false);
-
-      return;
+      return false;
     }
 
-    const { data, error } =
-      await supabase.rpc(
-        "is_admin"
-      );
+    const { data, error } = await supabase.rpc(
+      "is_admin"
+    );
+
+    console.log("Logged-in email:", currentSession.user.email);
+    console.log("is_admin result:", data);
+    console.log("is_admin error:", error);
 
     if (error) {
-
-      console.error(
-        "Admin check error:",
-        error
-      );
-
+      console.error("Admin check error:", error);
       setIsAdmin(false);
-
-      return;
+      return false;
     }
 
-    setIsAdmin(
-      data === true
-    );
-  };
+    const admin = data === true;
 
+    setIsAdmin(admin);
+
+    return admin;
+  };
 
   // --------------------------------------------------
   // INITIALIZATION
   // --------------------------------------------------
 
   useEffect(() => {
+    let mounted = true;
 
     const initialize = async () => {
-
       const {
-        data: {
-          session: currentSession
-        }
-      } =
-        await supabase.auth.getSession();
+        data: { session: currentSession }
+      } = await supabase.auth.getSession();
 
-      setSession(
-        currentSession
-      );
+      if (!mounted) {
+        return;
+      }
 
-      await checkAdmin(
-        currentSession
-      );
+      setSession(currentSession);
+
+      if (currentSession) {
+        await checkAdmin(currentSession);
+      }
 
       await fetchRotation();
-
       await fetchHistory();
 
-      setLoading(false);
+      if (mounted) {
+        setLoading(false);
+      }
     };
-
 
     initialize();
 
-
     // -----------------------------
-    // AUTH LISTENER
+    // Auth listener
     // -----------------------------
 
     const {
-      data: {
-        subscription
-      }
-    } =
-      supabase.auth.onAuthStateChange(
-        async (
-          _event,
-          newSession
-        ) => {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange(
+      (event, newSession) => {
+        if (!mounted) {
+          return;
+        }
 
-          setSession(
-            newSession
+        console.log(
+          "Auth event:",
+          event,
+          newSession
+        );
+
+        setSession(newSession);
+
+        if (!newSession) {
+          setIsAdmin(false);
+          return;
+        }
+
+        // Do the Supabase RPC outside the
+        // auth callback.
+        setTimeout(() => {
+          if (mounted) {
+            checkAdmin(newSession);
+          }
+        }, 0);
+      }
+    );
+
+    // -----------------------------
+    // Rotation realtime
+    // -----------------------------
+
+    const rotationChannel = supabase
+      .channel("rotation-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "rotation",
+          filter: "id=eq.1"
+        },
+        (payload) => {
+          setCurrentStep(
+            payload.new.current_step
           );
 
-          await checkAdmin(
-            newSession
+          setCycle(
+            payload.new.cycle
+          );
+
+          setCompletedTasks(
+            payload.new.completed_tasks || []
           );
         }
-      );
-
-
-    // -----------------------------
-    // ROTATION REALTIME
-    // -----------------------------
-
-    const rotationChannel =
-      supabase
-        .channel(
-          "rotation-realtime"
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "UPDATE",
-            schema: "public",
-            table: "rotation",
-            filter: "id=eq.1"
-          },
-          (payload) => {
-
-            setCurrentStep(
-              payload.new.current_step
-            );
-
-            setCycle(
-              payload.new.cycle
-            );
-
-            setCompletedTasks(
-              payload.new.completed_tasks ||
-              []
-            );
-          }
-        )
-        .subscribe();
-
+      )
+      .subscribe();
 
     // -----------------------------
-    // HISTORY REALTIME
+    // History realtime
     // -----------------------------
 
-    const historyChannel =
-      supabase
-        .channel(
-          "history-realtime"
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "rotation_history"
-          },
-          (payload) => {
+    const historyChannel = supabase
+      .channel("history-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "rotation_history"
+        },
+        (payload) => {
+          setHistory((previous) => [
+            payload.new,
+            ...previous
+          ].slice(0, 100));
+        }
+      )
+      .subscribe();
 
-            setHistory(
-              (previous) => [
-                payload.new,
-                ...previous
-              ].slice(0, 100)
-            );
-          }
-        )
-        .subscribe();
-
+    // -----------------------------
+    // Cleanup
+    // -----------------------------
 
     return () => {
+      mounted = false;
 
       subscription.unsubscribe();
 
@@ -363,37 +301,59 @@ function App() {
         historyChannel
       );
     };
-
   }, []);
-
 
   // --------------------------------------------------
   // LOGIN
   // --------------------------------------------------
 
   const handleLogin = async (event) => {
-
     event.preventDefault();
 
     setLoginError("");
-
     setLoginLoading(true);
 
+    const cleanEmail = email.trim();
 
     const {
       data,
       error
-    } =
-      await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password
-      });
-
+    } = await supabase.auth.signInWithPassword({
+      email: cleanEmail,
+      password
+    });
 
     if (error) {
+      console.error(
+        "Login error:",
+        error
+      );
+
+      setLoginError(error.message);
+      setLoginLoading(false);
+
+      return;
+    }
+
+    console.log(
+      "Login successful:",
+      data.user
+    );
+
+    setSession(data.session);
+
+    const admin = await checkAdmin(
+      data.session
+    );
+
+    if (!admin) {
+      await supabase.auth.signOut();
+
+      setSession(null);
+      setIsAdmin(false);
 
       setLoginError(
-        error.message
+        "This account is not an admin."
       );
 
       setLoginLoading(false);
@@ -401,35 +361,22 @@ function App() {
       return;
     }
 
-
-    await checkAdmin(
-      data.session
-    );
-
-
     setEmail("");
-
     setPassword("");
-
     setShowLogin(false);
-
     setLoginLoading(false);
   };
-
 
   // --------------------------------------------------
   // LOGOUT
   // --------------------------------------------------
 
   const handleLogout = async () => {
-
     await supabase.auth.signOut();
 
     setSession(null);
-
     setIsAdmin(false);
   };
-
 
   // --------------------------------------------------
   // CURRENT ASSIGNMENT
@@ -440,7 +387,6 @@ function App() {
       ? rotation[currentStep]
       : null;
 
-
   // --------------------------------------------------
   // IS COMPLETED?
   // --------------------------------------------------
@@ -449,14 +395,12 @@ function App() {
     person,
     task
   ) => {
-
     return completedTasks.some(
       (item) =>
         item.person === person &&
         item.task === task
     );
   };
-
 
   // --------------------------------------------------
   // IS CURRENT TASK?
@@ -466,9 +410,7 @@ function App() {
     person,
     task
   ) => {
-
     if (!currentAssignment) {
-
       return false;
     }
 
@@ -478,162 +420,197 @@ function App() {
     );
   };
 
-
   // --------------------------------------------------
   // COMPLETE TASK
   // --------------------------------------------------
 
   const completeTask = async () => {
-
     if (
       updating ||
-      !isAdmin
+      !isAdmin ||
+      !currentAssignment
     ) {
-
       return;
     }
 
-
     setUpdating(true);
 
+    // Remember the task before the RPC
+    // advances the rotation.
+    const completedAssignment = {
+      person: currentAssignment.person,
+      task: currentAssignment.task
+    };
+
+    // Immediately show the checkbox
+    // as completed.
+    setCompletedTasks((previous) => {
+      const alreadyCompleted =
+        previous.some(
+          (item) =>
+            item.person ===
+              completedAssignment.person &&
+            item.task ===
+              completedAssignment.task
+        );
+
+      if (alreadyCompleted) {
+        return previous;
+      }
+
+      return [
+        ...previous,
+        completedAssignment
+      ];
+    });
 
     const {
       data,
       error
-    } =
-      await supabase.rpc(
-        "complete_current_task"
-      );
-
+    } = await supabase.rpc(
+      "complete_current_task"
+    );
 
     if (error) {
-
       console.error(
         "Complete task error:",
         error
       );
 
-      alert(
-        error.message
+      // Roll back optimistic update.
+      setCompletedTasks((previous) =>
+        previous.filter(
+          (item) =>
+            !(
+              item.person ===
+                completedAssignment.person &&
+              item.task ===
+                completedAssignment.task
+            )
+        )
       );
+
+      alert(error.message);
 
       setUpdating(false);
 
       return;
     }
-
-
-    // Immediately fetch latest state
-    await fetchRotation();
-
-    await fetchHistory();
-
 
     console.log(
       "Completed:",
       data
     );
 
+    // Fetch latest database state.
+    const updatedRotation =
+      await fetchRotation();
+
+    await fetchHistory();
+
+    /*
+      If the RPC successfully advanced the
+      rotation but the returned database state
+      did not yet contain the completed task,
+      preserve the completed checkbox locally.
+    */
+    if (
+      updatedRotation &&
+      updatedRotation.cycle === cycle
+    ) {
+      setCompletedTasks((previous) => {
+        const exists = previous.some(
+          (item) =>
+            item.person ===
+              completedAssignment.person &&
+            item.task ===
+              completedAssignment.task
+        );
+
+        if (exists) {
+          return previous;
+        }
+
+        return [
+          ...previous,
+          completedAssignment
+        ];
+      });
+    }
 
     setUpdating(false);
   };
-
 
   // --------------------------------------------------
   // RESET
   // --------------------------------------------------
 
   const resetRotation = async () => {
-
     if (!isAdmin) {
-
       return;
     }
-
 
     const confirmed =
       window.confirm(
         "Are you sure you want to reset the rotation?"
       );
 
-
     if (!confirmed) {
-
       return;
     }
 
-
     setUpdating(true);
 
-
-    const {
-      error
-    } =
+    const { error } =
       await supabase.rpc(
         "reset_rotation"
       );
 
-
     if (error) {
-
       console.error(
         "Reset error:",
         error
       );
 
-      alert(
-        error.message
-      );
+      alert(error.message);
 
       setUpdating(false);
 
       return;
     }
 
-
     await fetchRotation();
-
     await fetchHistory();
-
 
     setUpdating(false);
   };
-
 
   // --------------------------------------------------
   // LOADING
   // --------------------------------------------------
 
   if (loading) {
-
     return (
       <div className="loading">
-
         <div className="loading-box">
-
           <div className="spinner"></div>
 
           <p>
             Loading Chore Tracker...
           </p>
-
         </div>
-
       </div>
     );
   }
-
 
   // --------------------------------------------------
   // UI
   // --------------------------------------------------
 
   return (
-
     <div className="app">
 
       <div className="container">
-
 
         {/* =========================================
             HEADER
@@ -642,7 +619,6 @@ function App() {
         <header className="header">
 
           <div>
-
             <h1>
               Chore Tracker
             </h1>
@@ -650,9 +626,7 @@ function App() {
             <p className="subtitle">
               Bowl & Kettle Rotation
             </p>
-
           </div>
-
 
           <div className="auth-area">
 
@@ -677,9 +651,10 @@ function App() {
 
               <button
                 className="login-button"
-                onClick={() =>
-                  setShowLogin(true)
-                }
+                onClick={() => {
+                  setLoginError("");
+                  setShowLogin(true);
+                }}
               >
                 Admin Login
               </button>
@@ -689,28 +664,6 @@ function App() {
           </div>
 
         </header>
-
-
-        {/* =========================================
-            READ ONLY NOTICE
-        ========================================= */}
-
-        {!isAdmin && (
-
-          <div className="readonly-notice">
-
-            <span className="lock-icon">
-              🔒
-            </span>
-
-            <span>
-              View only — Admin login required
-              to make changes.
-            </span>
-
-          </div>
-
-        )}
 
 
         {/* =========================================
@@ -726,44 +679,45 @@ function App() {
           <div className="upcoming-tasks">
 
             {/* Current task */}
+
             <div className="upcoming-task current">
 
               <span className="upcoming-person">
-                {rotation[currentStep]?.person}
+                {currentStep !== null &&
+                  rotation[currentStep]?.person}
               </span>
 
               <span className="upcoming-task-name">
-                {rotation[currentStep]?.task}
+                {currentStep !== null &&
+                  rotation[currentStep]?.task}
               </span>
 
             </div>
 
 
             {/* Next task */}
+
             <div className="upcoming-task">
 
               <span className="upcoming-person">
-                {
+                {currentStep !== null &&
                   rotation[
                     (currentStep + 1) %
                     rotation.length
-                  ]?.person
-                }
+                  ]?.person}
               </span>
 
               <span className="upcoming-task-name">
-                {
+                {currentStep !== null &&
                   rotation[
                     (currentStep + 1) %
                     rotation.length
-                  ]?.task
-                }
+                  ]?.task}
               </span>
 
             </div>
 
           </div>
-
 
           <div className="cycle-info">
             Cycle {cycle}
@@ -778,354 +732,128 @@ function App() {
 
 
         {/* =========================================
-            TABLE
+            EVERYTHING BELOW IS ADMIN ONLY
         ========================================= */}
 
-        <section className="table-card">
+        {isAdmin && (
+          <>
 
-          <div className="table-header">
+            {/* =========================================
+                TABLE
+            ========================================= */}
 
-            <div>
-              Name
-            </div>
+            <section className="table-card">
 
-            <div>
-              Bowl
-            </div>
+              <div className="table-header">
 
-            <div>
-              Kettle
-            </div>
-
-          </div>
-
-
-          {people.map(
-            (person) => (
-
-              <div
-                className="table-row"
-                key={person}
-              >
-
-                <div className="person-name">
-
-                  {person}
-
+                <div>
+                  Name
                 </div>
 
-
-                {/* BOWL */}
-
-                <div className="checkbox-cell">
-
-                  <label
-                    className={
-                      isCurrentTask(
-                        person,
-                        "Bowl"
-                      )
-                        ? "current-checkbox"
-                        : ""
-                    }
-                  >
-
-                    <input
-                      type="checkbox"
-
-                      checked={isCompleted(
-                        person,
-                        "Bowl"
-                      )}
-
-                      disabled={
-                        !isAdmin ||
-                        !isCurrentTask(
-                          person,
-                          "Bowl"
-                        ) ||
-                        updating
-                      }
-
-                      onChange={
-                        completeTask
-                      }
-                    />
-
-                    <span className="checkmark">
-                    </span>
-
-                  </label>
-
+                <div>
+                  Bowl
                 </div>
 
-
-                {/* KETTLE */}
-
-                <div className="checkbox-cell">
-
-                  <label
-                    className={
-                      isCurrentTask(
-                        person,
-                        "Kettle"
-                      )
-                        ? "current-checkbox"
-                        : ""
-                    }
-                  >
-
-                    <input
-                      type="checkbox"
-
-                      checked={isCompleted(
-                        person,
-                        "Kettle"
-                      )}
-
-                      disabled={
-                        !isAdmin ||
-                        !isCurrentTask(
-                          person,
-                          "Kettle"
-                        ) ||
-                        updating
-                      }
-
-                      onChange={
-                        completeTask
-                      }
-                    />
-
-                    <span className="checkmark">
-                    </span>
-
-                  </label>
-
+                <div>
+                  Kettle
                 </div>
 
               </div>
 
-            )
-          )}
 
-        </section>
-
-
-        {/* =========================================
-            ROTATION ORDER
-        ========================================= */}
-
-        <section className="rotation-card">
-
-          <h2>
-            Rotation Order
-          </h2>
-
-          <div className="rotation-list">
-
-            {rotation.map(
-              (item, index) => {
-
-                const completed =
-                  index < currentStep;
-
-                const active =
-                  index === currentStep;
-
-                return (
+              {people.map(
+                (person) => (
 
                   <div
-                    key={index}
-                    className={
-                      `rotation-item ${
-                        active
-                          ? "active"
-                          : ""
-                      } ${
-                        completed
-                          ? "completed"
-                          : ""
-                      }`
-                    }
+                    className="table-row"
+                    key={person}
                   >
 
-                    <span className="rotation-number">
-
-                      {completed
-                        ? "✓"
-                        : index + 1}
-
-                    </span>
-
-                    <span className="rotation-person">
-
-                      {item.person}
-
-                    </span>
-
-                    <span className="arrow">
-
-                      →
-
-                    </span>
-
-                    <span className="rotation-task">
-
-                      {item.task}
-
-                    </span>
-
-                  </div>
-
-                );
-              }
-            )}
-
-          </div>
-
-        </section>
+                    <div className="person-name">
+                      {person}
+                    </div>
 
 
-        {/* =========================================
-            ADMIN CONTROLS
-        ========================================= */}
+                    {/* BOWL */}
 
-        {isAdmin && (
+                    <div className="checkbox-cell">
 
-          <section className="admin-controls">
+                      <label
+                        className={
+                          isCurrentTask(
+                            person,
+                            "Bowl"
+                          )
+                            ? "current-checkbox"
+                            : ""
+                        }
+                      >
 
-            <div>
+                        <input
+                          type="checkbox"
+                          checked={isCompleted(
+                            person,
+                            "Bowl"
+                          )}
+                          disabled={
+                            !isAdmin ||
+                            !isCurrentTask(
+                              person,
+                              "Bowl"
+                            ) ||
+                            updating
+                          }
+                          onChange={
+                            completeTask
+                          }
+                        />
 
-              <strong>
-                Admin Controls
-              </strong>
+                        <span className="checkmark">
+                        </span>
 
-              <p>
-                You are logged in as the
-                tracker administrator.
-              </p>
-
-            </div>
-
-            <button
-              className="reset-button"
-              onClick={resetRotation}
-              disabled={updating}
-            >
-              Reset Rotation
-            </button>
-
-          </section>
-
-        )}
-
-
-        {/* =========================================
-            HISTORY
-        ========================================= */}
-
-        <section className="history-card">
-
-          <div className="section-heading">
-
-            <div>
-
-              <h2>
-                History
-              </h2>
-
-              <p>
-                Recent changes to the tracker
-              </p>
-
-            </div>
-
-            <span className="history-count">
-              {history.length}
-            </span>
-
-          </div>
-
-
-          {history.length === 0 ? (
-
-            <div className="empty-history">
-
-              No changes have been made yet.
-
-            </div>
-
-          ) : (
-
-            <div className="history-list">
-
-              {history.map(
-                (item) => (
-
-                  <div
-                    className="history-item"
-                    key={item.id}
-                  >
-
-                    <div className="history-icon">
-
-                      {item.action ===
-                      "completed"
-                        ? "✓"
-                        : "↻"}
+                      </label>
 
                     </div>
 
 
-                    <div className="history-content">
+                    {/* KETTLE */}
 
-                      <div className="history-main">
+                    <div className="checkbox-cell">
 
-                        <strong>
-                          {item.user_email}
-                        </strong>
+                      <label
+                        className={
+                          isCurrentTask(
+                            person,
+                            "Kettle"
+                          )
+                            ? "current-checkbox"
+                            : ""
+                        }
+                      >
 
-                        {item.action ===
-                        "completed" ? (
+                        <input
+                          type="checkbox"
+                          checked={isCompleted(
+                            person,
+                            "Kettle"
+                          )}
+                          disabled={
+                            !isAdmin ||
+                            !isCurrentTask(
+                              person,
+                              "Kettle"
+                            ) ||
+                            updating
+                          }
+                          onChange={
+                            completeTask
+                          }
+                        />
 
-                          <span>
-                            completed{" "}
-                            <strong>
-                              {item.task}
-                            </strong>{" "}
-                            for{" "}
-                            <strong>
-                              {item.person}
-                            </strong>
-                          </span>
-
-                        ) : (
-
-                          <span>
-                            reset the rotation
-                          </span>
-
-                        )}
-
-                      </div>
-
-
-                      <div className="history-meta">
-
-                        {item.cycle && (
-                          <span>
-                            Cycle {item.cycle}
-                          </span>
-                        )}
-
-                        <span>
-                          {new Date(
-                            item.created_at
-                          ).toLocaleString()}
+                        <span className="checkmark">
                         </span>
 
-                      </div>
+                      </label>
 
                     </div>
 
@@ -1134,32 +862,249 @@ function App() {
                 )
               )}
 
-            </div>
-
-          )}
-
-        </section>
+            </section>
 
 
-        {/* =========================================
-            FOOTER
-        ========================================= */}
+            {/* =========================================
+                ROTATION ORDER
+            ========================================= */}
 
-        <footer>
+            <section className="rotation-card">
 
-          <span>
-            Chore Tracker
-          </span>
+              <h2>
+                Rotation Order
+              </h2>
 
-          <span>
-            •
-          </span>
+              <div className="rotation-list">
 
-          <span>
-            Cycle {cycle}
-          </span>
+                {rotation.map(
+                  (item, index) => {
 
-        </footer>
+                    const completed =
+                      currentStep !== null &&
+                      index < currentStep;
+
+                    const active =
+                      index === currentStep;
+
+                    return (
+
+                      <div
+                        key={index}
+                        className={
+                          `rotation-item ${
+                            active
+                              ? "active"
+                              : ""
+                          } ${
+                            completed
+                              ? "completed"
+                              : ""
+                          }`
+                        }
+                      >
+
+                        <span className="rotation-number">
+
+                          {completed
+                            ? "✓"
+                            : index + 1}
+
+                        </span>
+
+                        <span className="rotation-person">
+                          {item.person}
+                        </span>
+
+                        <span className="arrow">
+                          →
+                        </span>
+
+                        <span className="rotation-task">
+                          {item.task}
+                        </span>
+
+                      </div>
+
+                    );
+                  }
+                )}
+
+              </div>
+
+            </section>
+
+
+            {/* =========================================
+                ADMIN CONTROLS
+            ========================================= */}
+
+            <section className="admin-controls">
+
+              <div>
+
+                <strong>
+                  Admin Controls
+                </strong>
+
+                <p>
+                  You are logged in as the
+                  tracker administrator.
+                </p>
+
+              </div>
+
+              <button
+                className="reset-button"
+                onClick={resetRotation}
+                disabled={updating}
+              >
+                Reset Rotation
+              </button>
+
+            </section>
+
+
+            {/* =========================================
+                HISTORY
+            ========================================= */}
+
+            <section className="history-card">
+
+              <div className="section-heading">
+
+                <div>
+
+                  <h2>
+                    History
+                  </h2>
+
+                  <p>
+                    Recent changes to the tracker
+                  </p>
+
+                </div>
+
+                <span className="history-count">
+                  {history.length}
+                </span>
+
+              </div>
+
+
+              {history.length === 0 ? (
+
+                <div className="empty-history">
+                  No changes have been made yet.
+                </div>
+
+              ) : (
+
+                <div className="history-list">
+
+                  {history.map(
+                    (item) => (
+
+                      <div
+                        className="history-item"
+                        key={item.id}
+                      >
+
+                        <div className="history-icon">
+
+                          {item.action ===
+                          "completed"
+                            ? "✓"
+                            : "↻"}
+
+                        </div>
+
+
+                        <div className="history-content">
+
+                          <div className="history-main">
+
+                            <strong>
+                              {item.user_email}
+                            </strong>
+
+                            {item.action ===
+                            "completed" ? (
+
+                              <span>
+                                completed{" "}
+                                <strong>
+                                  {item.task}
+                                </strong>{" "}
+                                for{" "}
+                                <strong>
+                                  {item.person}
+                                </strong>
+                              </span>
+
+                            ) : (
+
+                              <span>
+                                reset the rotation
+                              </span>
+
+                            )}
+
+                          </div>
+
+
+                          <div className="history-meta">
+
+                            {item.cycle && (
+                              <span>
+                                Cycle {item.cycle}
+                              </span>
+                            )}
+
+                            <span>
+                              {new Date(
+                                item.created_at
+                              ).toLocaleString()}
+                            </span>
+
+                          </div>
+
+                        </div>
+
+                      </div>
+
+                    )
+                  )}
+
+                </div>
+
+              )}
+
+            </section>
+
+
+            {/* =========================================
+                FOOTER
+            ========================================= */}
+
+            <footer>
+
+              <span>
+                Chore Tracker
+              </span>
+
+              <span>
+                •
+              </span>
+
+              <span>
+                Cycle {cycle}
+              </span>
+
+            </footer>
+
+          </>
+        )}
 
       </div>
 
@@ -1257,9 +1202,7 @@ function App() {
               {loginError && (
 
                 <div className="login-error">
-
                   {loginError}
-
                 </div>
 
               )}
