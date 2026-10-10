@@ -55,7 +55,10 @@ function App() {
   // -----------------------------
   // Rotation state
   // -----------------------------
-
+  const [kettleStep, setKettleStep] = useState(0);
+  const [bowlStep, setBowlStep] = useState(0);
+  const [kettleCycle, setKettleCycle] = useState(1);
+  const [bowlCycle, setBowlCycle] = useState(1);
   const [currentStep, setCurrentStep] = useState(null);
   const [cycle, setCycle] = useState(1);
   const [completedTasks, setCompletedTasks] = useState([]);
@@ -105,10 +108,12 @@ function App() {
       console.error("Rotation fetch error:", error);
       return null;
     }
-
-    setCurrentStep(data.current_step);
-    setCycle(data.cycle);
+    setKettleStep(data.kettle_step);
+    setBowlStep(data.bowl_step);
+    setKettleCycle(data.kettle_cycle);
+    setBowlCycle(data.bowl_cycle);
     setCompletedTasks(data.completed_tasks || []);
+    setCycle(data.cycle);
 
     return data;
   };
@@ -247,17 +252,14 @@ function App() {
           filter: "id=eq.1"
         },
         (payload) => {
-          setCurrentStep(
-            payload.new.current_step
-          );
+          setKettleStep(payload.new.kettle_step);
+          setBowlStep(payload.new.bowl_step);
 
-          setCycle(
-            payload.new.cycle
-          );
+          setKettleCycle(payload.new.kettle_cycle);
+          setBowlCycle(payload.new.bowl_cycle);
 
-          setCompletedTasks(
-            payload.new.completed_tasks || []
-          );
+          setCompletedTasks(payload.new.completed_tasks || []);
+          setCycle(payload.new.cycle);
         }
       )
       .subscribe();
@@ -382,163 +384,75 @@ function App() {
   // CURRENT ASSIGNMENT
   // --------------------------------------------------
 
-  const currentAssignment =
-    currentStep !== null
-      ? rotation[currentStep]
-      : null;
+  const assignments = {
+    Kettle: {
+      person: ["Abhay", "Aniket", "Priyanshu"][kettleStep],
+      step: kettleStep,
+      cycle: kettleCycle,
+    },
+    Bowl: {
+      person: ["Priyanshu", "Abhay", "Aniket"][bowlStep],
+      step: bowlStep,
+      cycle: bowlCycle,
+    },
+  };
+
+
 
   // --------------------------------------------------
   // IS COMPLETED?
   // --------------------------------------------------
 
-  const isCompleted = (
-    person,
-    task
-  ) => {
-    return completedTasks.some(
-      (item) =>
-        item.person === person &&
-        item.task === task
+
+  const isCompleted = (person, task) =>
+    completedTasks.some(
+      (item) => item.person === person && item.task === task
     );
-  };
 
   // --------------------------------------------------
   // IS CURRENT TASK?
   // --------------------------------------------------
 
-  const isCurrentTask = (
-    person,
-    task
-  ) => {
-    if (!currentAssignment) {
-      return false;
-    }
+  const isCurrentTask = (person, task) =>
+    assignments[task]?.person === person;
+  // const isCurrentTask = (
+  //   person,
+  //   task
+  // ) => {
+  //   if (!currentAssignment) {
+  //     return false;
+  //   }
 
-    return (
-      currentAssignment.person === person &&
-      currentAssignment.task === task
-    );
-  };
+  //   return (
+  //     currentAssignment.person === person &&
+  //     currentAssignment.task === task
+  //   );
+  // };
 
   // --------------------------------------------------
   // COMPLETE TASK
   // --------------------------------------------------
 
-  const completeTask = async () => {
-    if (
-      updating ||
-      !isAdmin ||
-      !currentAssignment
-    ) {
-      return;
-    }
+  const completeTask = async (task) => {
+    if (!isAdmin || updating || !assignments[task]) return;
 
     setUpdating(true);
 
-    // Remember the task before the RPC
-    // advances the rotation.
-    const completedAssignment = {
-      person: currentAssignment.person,
-      task: currentAssignment.task
-    };
-
-    // Immediately show the checkbox
-    // as completed.
-    setCompletedTasks((previous) => {
-      const alreadyCompleted =
-        previous.some(
-          (item) =>
-            item.person ===
-              completedAssignment.person &&
-            item.task ===
-              completedAssignment.task
-        );
-
-      if (alreadyCompleted) {
-        return previous;
-      }
-
-      return [
-        ...previous,
-        completedAssignment
-      ];
-    });
-
-    const {
-      data,
-      error
-    } = await supabase.rpc(
-      "complete_current_task"
-    );
-
-    if (error) {
-      console.error(
-        "Complete task error:",
-        error
-      );
-
-      // Roll back optimistic update.
-      setCompletedTasks((previous) =>
-        previous.filter(
-          (item) =>
-            !(
-              item.person ===
-                completedAssignment.person &&
-              item.task ===
-                completedAssignment.task
-            )
-        )
-      );
-
-      alert(error.message);
-
-      setUpdating(false);
-
-      return;
-    }
-
-    console.log(
-      "Completed:",
-      data
-    );
-
-    // Fetch latest database state.
-    const updatedRotation =
-      await fetchRotation();
-
-    await fetchHistory();
-
-    /*
-      If the RPC successfully advanced the
-      rotation but the returned database state
-      did not yet contain the completed task,
-      preserve the completed checkbox locally.
-    */
-    if (
-      updatedRotation &&
-      updatedRotation.cycle === cycle
-    ) {
-      setCompletedTasks((previous) => {
-        const exists = previous.some(
-          (item) =>
-            item.person ===
-              completedAssignment.person &&
-            item.task ===
-              completedAssignment.task
-        );
-
-        if (exists) {
-          return previous;
-        }
-
-        return [
-          ...previous,
-          completedAssignment
-        ];
+    try {
+      const { error } = await supabase.rpc("complete_task", {
+        p_task: task,
       });
-    }
 
-    setUpdating(false);
+      if (error) throw error;
+
+      await fetchRotation();
+      await fetchHistory();
+    } catch (error) {
+      console.error("Complete task error:", error);
+      alert(error.message);
+    } finally {
+      setUpdating(false);
+    }
   };
 
   // --------------------------------------------------
@@ -677,56 +591,38 @@ function App() {
           </div>
 
           <div className="upcoming-tasks">
+            {["Kettle", "Bowl"].map((task) => {
+              const assignment = assignments[task];
+              const peopleForTask =
+                task === "Kettle"
+                  ? ["Abhay", "Aniket", "Priyanshu"]
+                  : ["Aniket", "Abhay", "Priyanshu"];
 
-            {/* Current task */}
+              const nextPerson =
+                peopleForTask[(assignment.step + 1) % 3];
 
-            <div className="upcoming-task current">
-
-              <span className="upcoming-person">
-                {currentStep !== null &&
-                  rotation[currentStep]?.person}
-              </span>
-
-              <span className="upcoming-task-name">
-                {currentStep !== null &&
-                  rotation[currentStep]?.task}
-              </span>
-
-            </div>
-
-
-            {/* Next task */}
-
-            <div className="upcoming-task">
-
-              <span className="upcoming-person">
-                {currentStep !== null &&
-                  rotation[
-                    (currentStep + 1) %
-                    rotation.length
-                  ]?.person}
-              </span>
-
-              <span className="upcoming-task-name">
-                {currentStep !== null &&
-                  rotation[
-                    (currentStep + 1) %
-                    rotation.length
-                  ]?.task}
-              </span>
-
-            </div>
-
+              return (
+                <div className="upcoming-task" key={task}>
+                  <span className="upcoming-person">
+                    {assignment.person}
+                  </span>
+                  <span className="upcoming-task-name">
+                    {task}
+                  </span>
+                  <span className="upcoming-task-name">
+                    Next: {nextPerson}
+                  </span>
+                </div>
+              );
+            })}
           </div>
 
           <div className="cycle-info">
-            Cycle {cycle}
+            Kettle Cycle {kettleCycle} · Bowl Cycle {bowlCycle}
           </div>
 
-          <div className="progress">
-            Step {currentStep + 1} of{" "}
-            {rotation.length}
-          </div>
+          
+
 
         </section>
 
@@ -803,9 +699,7 @@ function App() {
                             ) ||
                             updating
                           }
-                          onChange={
-                            completeTask
-                          }
+                          onChange={() => completeTask("Bowl")}
                         />
 
                         <span className="checkmark">
@@ -845,9 +739,7 @@ function App() {
                             ) ||
                             updating
                           }
-                          onChange={
-                            completeTask
-                          }
+                          onChange={() => completeTask("Kettle")}
                         />
 
                         <span className="checkmark">
@@ -870,68 +762,45 @@ function App() {
             ========================================= */}
 
             <section className="rotation-card">
+              <h2>Independent Rotation Orders</h2>
 
-              <h2>
-                Rotation Order
-              </h2>
+              {[
+                {
+                  task: "Kettle",
+                  people: ["Abhay", "Aniket", "Priyanshu"],
+                  step: kettleStep,
+                  cycle: kettleCycle,
+                },
+                {
+                  task: "Bowl",
+                  people: ["Aniket", "Abhay", "Priyanshu"],
+                  step: bowlStep,
+                  cycle: bowlCycle,
+                },
+              ].map(({ task, people: taskPeople, step, cycle: taskCycle }) => (
+                <div key={task} style={{ marginBottom: 20 }}>
+                  <h3>{task} — Cycle {taskCycle}</h3>
 
-              <div className="rotation-list">
-
-                {rotation.map(
-                  (item, index) => {
-
-                    const completed =
-                      currentStep !== null &&
-                      index < currentStep;
-
-                    const active =
-                      index === currentStep;
-
-                    return (
-
+                  <div className="rotation-list">
+                    {taskPeople.map((person, index) => (
                       <div
-                        key={index}
-                        className={
-                          `rotation-item ${
-                            active
-                              ? "active"
-                              : ""
-                          } ${
-                            completed
-                              ? "completed"
-                              : ""
-                          }`
-                        }
+                        key={person}
+                        className={`rotation-item ${index === step ? "active" : ""
+                          } ${isCompleted(person, task) ? "completed" : ""
+                          }`}
                       >
-
                         <span className="rotation-number">
-
-                          {completed
-                            ? "✓"
-                            : index + 1}
-
+                          {isCompleted(person, task) ? "✓" : index + 1}
                         </span>
-
-                        <span className="rotation-person">
-                          {item.person}
-                        </span>
-
-                        <span className="arrow">
-                          →
-                        </span>
-
-                        <span className="rotation-task">
-                          {item.task}
-                        </span>
-
+                        <span className="rotation-person">{person}</span>
+                        {index === step && (
+                          <span className="arrow">← Current</span>
+                        )}
                       </div>
-
-                    );
-                  }
-                )}
-
-              </div>
-
+                    ))}
+                  </div>
+                </div>
+              ))}
             </section>
 
 
@@ -1013,7 +882,7 @@ function App() {
                         <div className="history-icon">
 
                           {item.action ===
-                          "completed"
+                            "completed"
                             ? "✓"
                             : "↻"}
 
@@ -1029,7 +898,7 @@ function App() {
                             </strong>
 
                             {item.action ===
-                            "completed" ? (
+                              "completed" ? (
 
                               <span>
                                 completed{" "}
@@ -1089,17 +958,9 @@ function App() {
 
             <footer>
 
-              <span>
-                Chore Tracker
-              </span>
-
-              <span>
-                •
-              </span>
-
-              <span>
-                Cycle {cycle}
-              </span>
+              <span>Kettle Cycle {kettleCycle}</span>
+              <span>•</span>
+              <span>Bowl Cycle {bowlCycle}</span>
 
             </footer>
 
