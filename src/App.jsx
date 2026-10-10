@@ -596,7 +596,7 @@ function App() {
               const peopleForTask =
                 task === "Kettle"
                   ? ["Abhay", "Aniket", "Priyanshu"]
-                  : ["Aniket", "Abhay", "Priyanshu"];
+                  : ["Priyanshu", "Abhay", "Aniket"];
 
               const nextPerson =
                 peopleForTask[(assignment.step + 1) % 3];
@@ -773,7 +773,7 @@ function App() {
                 },
                 {
                   task: "Bowl",
-                  people: ["Aniket", "Abhay", "Priyanshu"],
+                  people: ["Priyanshu", "Abhay", "Aniket"],
                   step: bowlStep,
                   cycle: bowlCycle,
                 },
